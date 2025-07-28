@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bot, FileText, Globe, Zap, CheckCircle, AlertCircle, Code, Download } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Bot, FileText, Globe, Zap, CheckCircle, AlertCircle, Code, Download, ExternalLink } from "lucide-react";
 import heroImage from "@/assets/hero-automation.jpg";
 
 interface ResumeData {
@@ -45,6 +46,9 @@ export const JobAutomationTool = () => {
   const [resumeJson, setResumeJson] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [generatedScript, setGeneratedScript] = useState('');
+  const [jobData, setJobData] = useState<any>(null);
+  const [showCodeDialog, setShowCodeDialog] = useState(false);
   const [processingSteps, setProcessingSteps] = useState<ProcessingStep[]>([
     { id: '1', title: 'Fetch Job Description', status: 'pending', description: 'Scraping job posting content...' },
     { id: '2', title: 'Analyze Requirements', status: 'pending', description: 'Extracting key requirements and preferences...' },
@@ -92,15 +96,246 @@ export const JobAutomationTool = () => {
     ));
   };
 
-  const simulateProcessing = async () => {
+  const fetchJobData = async (url: string) => {
+    try {
+      const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+      const html = await response.text();
+      
+      // Basic job parsing from HTML
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      
+      const title = doc.querySelector('h1')?.textContent || 'Job Position';
+      const description = doc.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+      
+      return {
+        title,
+        description,
+        company: new URL(url).hostname.replace('www.', ''),
+        url
+      };
+    } catch (error) {
+      console.error('Failed to fetch job data:', error);
+      return {
+        title: 'Job Position',
+        description: 'Job description could not be fetched',
+        company: new URL(jobUrl).hostname.replace('www.', ''),
+        url: jobUrl
+      };
+    }
+  };
+
+  const generateAutomationScript = (resumeData: ResumeData, jobData: any) => {
+    return `// AI-Generated Job Application Automation Script
+// Generated for: ${jobData.title} at ${jobData.company}
+// Target URL: ${jobData.url}
+
+const { chromium } = require('playwright');
+
+async function automateJobApplication() {
+  const browser = await chromium.launch({ headless: false });
+  const page = await browser.newPage();
+  
+  console.log('🚀 Starting job application automation...');
+  
+  try {
+    // Navigate to job application page
+    await page.goto('${jobData.url}');
+    await page.waitForLoadState('networkidle');
+    
+    // Personal Information Auto-Fill
+    console.log('📝 Filling personal information...');
+    
+    // Common field selectors and your data
+    const personalData = {
+      name: '${resumeData.personalInfo.name}',
+      email: '${resumeData.personalInfo.email}',
+      phone: '${resumeData.personalInfo.phone}',
+      location: '${resumeData.personalInfo.location}'
+    };
+    
+    // Try multiple common selectors for each field
+    const fieldMappings = {
+      name: ['input[name*="name"]', 'input[id*="name"]', '#firstName', '#fullName'],
+      email: ['input[type="email"]', 'input[name*="email"]', 'input[id*="email"]'],
+      phone: ['input[type="tel"]', 'input[name*="phone"]', 'input[id*="phone"]'],
+      location: ['input[name*="location"]', 'input[name*="address"]', 'input[id*="city"]']
+    };
+    
+    for (const [field, selectors] of Object.entries(fieldMappings)) {
+      for (const selector of selectors) {
+        try {
+          const element = await page.locator(selector).first();
+          if (await element.isVisible()) {
+            await element.fill(personalData[field]);
+            console.log(\`✅ Filled \${field}: \${personalData[field]}\`);
+            break;
+          }
+        } catch (e) {
+          // Continue to next selector
+        }
+      }
+    }
+    
+    // Experience and Skills Section
+    console.log('💼 Filling experience information...');
+    
+    // Look for experience/work history fields
+    const experienceSelectors = [
+      'textarea[name*="experience"]',
+      'textarea[id*="experience"]',
+      'textarea[name*="work"]',
+      '#workExperience'
+    ];
+    
+    const experienceText = \`${resumeData.experience.map(exp => 
+      `${exp.position} at ${exp.company} (${exp.duration})\\n${exp.description}`
+    ).join('\\n\\n')}\`;
+    
+    for (const selector of experienceSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible()) {
+          await element.fill(experienceText);
+          console.log('✅ Filled work experience');
+          break;
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    
+    // Skills Section
+    const skillsText = '${resumeData.skills.join(', ')}';
+    const skillsSelectors = [
+      'input[name*="skills"]',
+      'textarea[name*="skills"]',
+      'input[id*="skills"]',
+      'textarea[id*="skills"]'
+    ];
+    
+    for (const selector of skillsSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible()) {
+          await element.fill(skillsText);
+          console.log('✅ Filled skills');
+          break;
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    
+    // Resume Upload
+    console.log('📄 Looking for resume upload...');
+    const fileInputSelectors = [
+      'input[type="file"]',
+      'input[accept*="pdf"]',
+      'input[name*="resume"]',
+      'input[name*="cv"]'
+    ];
+    
+    for (const selector of fileInputSelectors) {
+      try {
+        const fileInput = await page.locator(selector).first();
+        if (await fileInput.isVisible()) {
+          // Note: You need to provide the actual resume file path
+          // await fileInput.setInputFiles('/path/to/your/resume.pdf');
+          console.log('📎 Resume upload field found (manual upload required)');
+          break;
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    
+    // AI-Generated Cover Letter/Responses
+    console.log('🤖 Generating personalized responses...');
+    
+    // Look for cover letter or additional questions
+    const coverLetterSelectors = [
+      'textarea[name*="cover"]',
+      'textarea[name*="letter"]',
+      'textarea[name*="message"]',
+      'textarea[id*="cover"]'
+    ];
+    
+    const aiResponse = \`Dear Hiring Manager,
+
+I am excited to apply for the ${jobData.title} position at ${jobData.company}. With my background in ${resumeData.skills.slice(0, 3).join(', ')}, I am confident I can contribute significantly to your team.
+
+In my previous role as ${resumeData.experience[0]?.position} at ${resumeData.experience[0]?.company}, I ${resumeData.experience[0]?.description}
+
+My technical skills in ${resumeData.skills.join(', ')} align perfectly with the requirements for this position. I am particularly drawn to ${jobData.company} because of your reputation for innovation and excellence.
+
+Thank you for considering my application. I look forward to discussing how my experience can benefit your team.
+
+Best regards,
+${resumeData.personalInfo.name}\`;
+    
+    for (const selector of coverLetterSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible()) {
+          await element.fill(aiResponse);
+          console.log('✅ Filled cover letter/message');
+          break;
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    
+    // Final steps
+    console.log('🎯 Application completed! Review before submitting.');
+    console.log('⚠️  Please review all fields and submit manually for security.');
+    
+    // Wait for user to review
+    await page.waitForTimeout(5000);
+    
+  } catch (error) {
+    console.error('❌ Automation error:', error);
+  } finally {
+    // Don't close browser to allow manual review
+    console.log('🔍 Browser left open for manual review and submission.');
+  }
+}
+
+// Run the automation
+automateJobApplication().catch(console.error);
+
+/* 
+INSTALLATION INSTRUCTIONS:
+1. Install Playwright: npm install playwright
+2. Save this script as 'job-automation.js'
+3. Update resume file path if using file upload
+4. Run: node job-automation.js
+5. Review and submit manually for security
+*/`;
+  };
+
+  const processJobApplication = async () => {
     setIsProcessing(true);
+    const resumeData = JSON.parse(resumeJson);
     
     for (let i = 0; i < processingSteps.length; i++) {
       setCurrentStep(i);
       updateStepStatus(i, 'processing');
       
-      // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (i === 0) {
+        // Fetch job description
+        const fetchedJobData = await fetchJobData(jobUrl);
+        setJobData(fetchedJobData);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } else if (i === 4) {
+        // Generate automation script
+        const script = generateAutomationScript(resumeData, jobData);
+        setGeneratedScript(script);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+      }
       
       updateStepStatus(i, 'completed');
     }
@@ -108,7 +343,7 @@ export const JobAutomationTool = () => {
     setIsProcessing(false);
     toast({
       title: "Automation Ready!",
-      description: "Your job application automation script has been generated."
+      description: "Your job application automation script has been generated and is ready to use."
     });
   };
 
@@ -133,7 +368,30 @@ export const JobAutomationTool = () => {
       return;
     }
 
-    await simulateProcessing();
+    await processJobApplication();
+  };
+
+  const handleDownloadScript = () => {
+    if (!generatedScript) return;
+    
+    const blob = new Blob([generatedScript], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `job-automation-${jobData?.company || 'script'}.js`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Script Downloaded!",
+      description: "Run with: npm install playwright && node job-automation.js"
+    });
+  };
+
+  const handleViewCode = () => {
+    setShowCodeDialog(true);
   };
 
   const getStepIcon = (status: ProcessingStep['status']) => {
@@ -327,11 +585,21 @@ export const JobAutomationTool = () => {
                       Your personalized automation script has been generated and is ready to use.
                     </p>
                     <div className="flex gap-2">
-                      <Button size="sm" className="bg-success hover:bg-success/90">
+                      <Button 
+                        size="sm" 
+                        className="bg-success hover:bg-success/90"
+                        onClick={handleDownloadScript}
+                        disabled={!generatedScript}
+                      >
                         <Download className="w-4 h-4 mr-2" />
                         Download Script
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleViewCode}
+                        disabled={!generatedScript}
+                      >
                         <Code className="w-4 h-4 mr-2" />
                         View Code
                       </Button>
@@ -389,6 +657,48 @@ export const JobAutomationTool = () => {
           </div>
         </div>
       </div>
+
+      {/* Code View Dialog */}
+      <Dialog open={showCodeDialog} onOpenChange={setShowCodeDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Code className="w-5 h-5" />
+              Generated Automation Script
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden">
+            <div className="bg-secondary/50 rounded-lg p-4 max-h-[60vh] overflow-auto">
+              <pre className="text-sm font-mono whitespace-pre-wrap break-words">
+                {generatedScript}
+              </pre>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <Button 
+                onClick={handleDownloadScript}
+                className="bg-primary hover:bg-primary/90"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download Script
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => navigator.clipboard.writeText(generatedScript)}
+              >
+                Copy to Clipboard
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => window.open(jobData?.url, '_blank')}
+                disabled={!jobData?.url}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Open Job Page
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
